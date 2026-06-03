@@ -1,0 +1,13 @@
+파워쉘 경로 찾아가기 
+
+1 .PS C:\Users\02stu> cd .\OneDrive\
+2. PS C:\Users\02stu\OneDrive> cd '.\바탕 화면\'
+3. PS C:\Users\02stu\OneDrive\바탕 화면> cd .\real_time_translator\
+
+(가상환경 만들기 최초 1회)
+PS C:\Users\02stu\OneDrive\바탕 화면\real_time_translator> python -m venv .venv 
+
+(가상환경 접속)
+PS C:\Users\02stu\OneDrive\바탕 화면\real_time_translator> .\.venv\Scripts\activate
+--->
+ex) (.venv) PS C:\Users\02stu\OneDrive\바탕 화면\real_time_translator>
