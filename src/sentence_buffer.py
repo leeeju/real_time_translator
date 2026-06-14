@@ -143,7 +143,7 @@ class SentenceBuffer:
 
         # Generic overlap removal.
         tail_max = min(len(prev), len(current), 32)
-        for n in range(tail_max, 3, -1):
+        for n in range(tail_max, 1, -1):
             if prev[-n:] == current[:n]:
                 return normalize_asr_text(prev + current[n:])
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -26,7 +27,13 @@ class RealtimePipeline:
     """
     Realtime terminal pipeline.
 
-    Later GUI can reuse this pipeline by replacing _print_result() with callbacks.
+    Conversation-mode design:
+      - Do not overfit to one radio/news sample.
+      - Keep latency acceptable for real conversation.
+      - Reduce obvious ASR artifacts before translation.
+      - Preserve numbers and units where possible.
+      - Later GUI can reuse this pipeline by replacing terminal printing
+        with callbacks.
     """
 
     def __init__(self, cfg: PipelineConfig):
@@ -130,7 +137,11 @@ class RealtimePipeline:
     def run(self) -> None:
         print("=== Real-time Translator Pipeline ===")
         print(f"direction       : {self.direction}")
-        print("main mode       : Japanese -> Korean" if self.direction == "ja2ko" else "mode            : Korean -> Japanese")
+        print(
+            "main mode       : Japanese -> Korean"
+            if self.direction == "ja2ko"
+            else "mode            : Korean -> Japanese"
+        )
         print(f"sentence buffer : {self.buffer_enabled}")
         print("Stop            : Ctrl+C")
         print()
@@ -246,6 +257,15 @@ class RealtimePipeline:
         asr_elapsed: Optional[float],
         rms: Optional[float],
     ) -> None:
+        source_text = self._cleanup_source_before_translation(source_text)
+
+        if not source_text:
+            return
+
+        if self._should_skip_source_text(source_text):
+            print(f"[DROP][source:fragment_or_noise] {source_text}")
+            return
+
         if self.suppress_duplicates and is_near_duplicate(self.last_translated_source, source_text):
             return
 
@@ -256,12 +276,12 @@ class RealtimePipeline:
         )
 
         if guarded.handled:
-            translated_text = guarded.text
+            translated_text = self._postprocess_translation(source_text, guarded.text)
             trans_elapsed = 0.0
             reason = f"{reason}+{guarded.reason}"
         else:
             tr_result = self.translator.translate(source_text, self.direction)
-            translated_text = self.glossary.apply_translation_postprocess(tr_result.text, self.direction)
+            translated_text = self._postprocess_translation(source_text, tr_result.text)
             trans_elapsed = tr_result.elapsed
 
         self.last_translated_source = source_text
@@ -295,3 +315,185 @@ class RealtimePipeline:
 
     def _translate_plain_text(self, text: str, direction: str) -> str:
         return self.translator.translate(text, direction).text
+
+    def _postprocess_translation(self, source_text: str, translated_text: str) -> str:
+        translated_text = self.glossary.apply_translation_postprocess(translated_text, self.direction)
+        translated_text = self._preserve_units(source_text, translated_text)
+        translated_text = self._cleanup_translated_text(translated_text)
+        return translated_text.strip()
+
+    def _cleanup_source_before_translation(self, source_text: str) -> str:
+        text = normalize_asr_text(source_text)
+
+        if self.direction == "ja2ko":
+            text = self._remove_prompt_leak_phrases(text)
+            text = self._remove_noise_tokens(text)
+
+        text = normalize_asr_text(text)
+        return text.strip()
+
+    def _should_skip_source_text(self, source_text: str) -> bool:
+        if not source_text:
+            return True
+
+        if self.direction != "ja2ko":
+            return False
+
+        t = source_text.strip().strip("。.!?！？、, 　")
+
+        # Remaining noise-only fragment.
+        if self._is_noise_only(t):
+            return True
+
+        # Short leftover fragments from previous utterance.
+        # Conservative list to avoid dropping valid daily expressions.
+        if len(t) <= 28 and re.match(r"^(?:の|を|から|まで|より)", t):
+            return True
+
+        # Prompt leak guard at final source stage.
+        if self._looks_like_prompt_leak(t):
+            return True
+
+        return False
+
+    def _remove_noise_tokens(self, text: str) -> str:
+        noise = r"(?:コンッ?|カンッ?|ドンッ?|パンッ?|ガサッ?|ザッ|ノイズ|雑音)"
+
+        # Leading impulse noise.
+        text = re.sub(rf"^(?:{noise})[、。,\s　]*", "", text)
+
+        # Noise after sentence boundary or whitespace.
+        text = re.sub(rf"([。！？!?、,\s　])(?:{noise})(?=[、。,\s　]|$)", r"\1", text)
+
+        # Repeated punctuation/spacing cleanup.
+        text = re.sub(r"\s+", " ", text)
+        text = text.replace("。。", "。").replace("、、", "、")
+
+        return text.strip()
+
+    def _remove_prompt_leak_phrases(self, text: str) -> str:
+        leak_phrases = (
+            "日本語の日常会話です。",
+            "日本語の日常会話です",
+            "質問、説明、確認、依頼、相づち、短い返事、会議での自然な発言を含みます。",
+            "質問、説明、確認、依頼、相づち、短い返事、会議での自然な発言を含みます",
+            "質問、説明、確認、依頼、相づち、短い返事、会議での自然な発話を含みます。",
+            "質問、説明、確認、依頼、相づち、短い返事、会議での自然な発話を含みます",
+        )
+
+        for phrase in leak_phrases:
+            text = text.replace(phrase, "")
+
+        return text.strip()
+
+    def _preserve_units(self, source_text: str, translated_text: str) -> str:
+        """
+        Preserve common numbers/units in ja2ko mode.
+
+        This is not news-specific. It protects real conversation too:
+          - 30円 should not become 30달러.
+          - 10% should stay 10%.
+          - 1kg should stay 1kg or 1kg당.
+          - 1割 means about 10%, not 1%.
+        """
+        if self.direction != "ja2ko":
+            return translated_text
+
+        src = source_text
+        out = translated_text
+
+        # Japanese yen protection.
+        # If source mentions 円 and not dollar, Korean output should not say dollars.
+        if re.search(r"\d+(?:\.\d+)?\s*円", src) and not re.search(r"\d+(?:\.\d+)?\s*(?:ドル|＄|\$)", src):
+            out = re.sub(r"(\d+(?:\.\d+)?)\s*(?:달러|불)", r"\1엔", out)
+            out = out.replace("달러", "엔")
+
+        # Percent preservation.
+        if "%" in src or "％" in src:
+            out = out.replace("퍼센트", "%")
+            out = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"\1%", out)
+
+        # Japanese wari ratio:
+        # 1割 -> 10%, 2割 -> 20%, ...
+        for m in re.finditer(r"(\d+)\s*割", src):
+            try:
+                wari = int(m.group(1))
+            except ValueError:
+                continue
+
+            percent = wari * 10
+
+            # Correct common mistranslation like 1% when source says 1割.
+            out = re.sub(rf"\b{wari}\s*%", f"{percent}%", out)
+            out = re.sub(rf"{wari}\s*퍼센트", f"{percent}%", out)
+
+            if "할" in out:
+                # Avoid aggressive rewrite when Korean already naturally uses 할/비율.
+                continue
+
+        # kg preservation.
+        if re.search(r"\d+(?:\.\d+)?\s*(?:kg|KG|Kg|キロ|キログラム)", src):
+            out = re.sub(r"(\d+(?:\.\d+)?)\s*킬로그램", r"\1kg", out)
+            out = re.sub(r"(\d+(?:\.\d+)?)\s*키로그램", r"\1kg", out)
+            out = re.sub(r"(\d+(?:\.\d+)?)\s*키로", r"\1kg", out)
+
+        # Celsius preservation.
+        if re.search(r"\d+(?:\.\d+)?\s*(?:℃|度|度C)", src):
+            out = re.sub(r"(\d+(?:\.\d+)?)\s*도", r"\1도", out)
+
+        return out
+
+    @staticmethod
+    def _cleanup_translated_text(text: str) -> str:
+        text = text.strip()
+        text = re.sub(r"\s+", " ", text)
+
+        # Clean common spacing artifacts.
+        text = text.replace(" %", "%")
+        text = text.replace(" kg", "kg")
+
+        return text.strip()
+
+    @staticmethod
+    def _is_noise_only(text: str) -> bool:
+        t = text.strip().strip("。.!?！？、, 　")
+        if not t:
+            return True
+
+        noise_tokens = {
+            "コン",
+            "コンッ",
+            "カン",
+            "カンッ",
+            "ドン",
+            "ドンッ",
+            "パン",
+            "パンッ",
+            "ガサ",
+            "ガサッ",
+            "ザッ",
+            "ノイズ",
+            "雑音",
+        }
+
+        if t in noise_tokens:
+            return True
+
+        if len(t) <= 4 and re.fullmatch(r"[\u30a0-\u30ffーッ]+", t):
+            safe_fillers = {"エット", "アノ"}
+            if t not in safe_fillers:
+                return True
+
+        return False
+
+    @staticmethod
+    def _looks_like_prompt_leak(text: str) -> bool:
+        prompt_like_patterns = (
+            "日本語の日常会話です",
+            "質問、説明、確認、依頼",
+            "相づち、短い返事",
+            "会議での自然な発言",
+            "会議での自然な発話",
+        )
+
+        return any(p in text for p in prompt_like_patterns)

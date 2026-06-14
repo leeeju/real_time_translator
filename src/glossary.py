@@ -89,13 +89,14 @@ def normalize_japanese_for_translation(text: str) -> str:
         text,
     )
 
-    # Add comma after common conjunctive verbs only as punctuation recovery.
-    text = re.sub(r"(上昇し)(?=[^\s、。])", r"\1、", text)
-    text = re.sub(r"(下落し)(?=[^\s、。])", r"\1、", text)
-    text = re.sub(r"(発表し)(?=[^\s、。])", r"\1、", text)
-    text = re.sub(r"(述べ)(?=[^\s、。])", r"\1、", text)
-    text = re.sub(r"(話し)(?=[^\s、。])", r"\1、", text)
-    text = re.sub(r"し\s+(?=[\u3040-\u30ff\u3400-\u9fff])", "し、", text)
+    # Add comma after conjunctive verbs only when the next token looks like a noun/kanji phrase.
+    # Avoid corrupting conjugations such as 発表した, 発表しました, 上昇した.
+    # text = re.sub(r"(上昇し)(?=[\u3400-\u9fff])", r"\1、", text)
+    # text = re.sub(r"(下落し)(?=[\u3400-\u9fff])", r"\1、", text)
+    # text = re.sub(r"(発表し)(?=[\u3400-\u9fff])", r"\1、", text)
+    # text = re.sub(r"(述べ)(?=[\u3400-\u9fff])", r"\1、", text)
+    # text = re.sub(r"(話し)(?=[\u3400-\u9fff])", r"\1、", text)
+    # text = re.sub(r"し\s+(?=[\u3040-\u30ff\u3400-\u9fff])", "し、", text)
 
     # Add period for common completed Japanese endings.
     if text and not text.endswith(("。", "？", "?", "！", "!", ".")):

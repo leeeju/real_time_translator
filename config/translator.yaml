@@ -1,15 +1,15 @@
 audio:
   source: loopback
   device_index: null
-  chunk_seconds: 2.0
-  overlap_seconds: 0.3
-  rms_threshold: 300.0
+  chunk_seconds: 3.2
+  overlap_seconds: 0.8
+  rms_threshold: 220.0
 
 language:
   direction: ja2ko
 
 asr:
-  model: small
+  model: large-v3-turbo
   device: cuda
   compute_type: int8_float16
   beam_size: 1
@@ -23,58 +23,53 @@ nllb:
   cache_dir: models
   device: cuda
   dtype: fp16
-  max_new_tokens: 64
+  max_new_tokens: 96
   num_beams: 1
-  repetition_penalty: 1.15
+  repetition_penalty: 1.10
   no_repeat_ngram_size: 3
-  length_penalty: 0.95
+  length_penalty: 1.0
 
 sentence_buffer:
   enabled: true
-  max_chars: 140
-  max_wait_sec: 3.0
-  min_chars_to_translate: 6
+  max_chars: 180
+  max_wait_sec: 4.0
+  min_chars_to_translate: 4
   print_partial_asr: true
   suppress_duplicates: true
 
 quality_filter:
   enabled: true
   min_text_len: 2
-  min_japanese_ratio: 0.30
-  max_repeated_char_ratio: 0.50
-  max_compression_ratio: 3.5
-  min_avg_logprob: -1.50
-  max_no_speech_prob: 0.85
+  min_japanese_ratio: 0.10
+  max_repeated_char_ratio: 0.65
+  max_compression_ratio: 5.0
+  min_avg_logprob: -2.50
+  max_no_speech_prob: 0.98
 
 glossary:
   enabled: true
   ja_asr_corrections:
-    "かぶか": "株価"
-    "株か": "株価"
-    "とりひき": "取引"
-    "にっけいへいきん": "日経平均"
-    "にっけい平均": "日経平均"
-    "かわせ": "為替"
-    "きんり": "金利"
-    "じょうしょう": "上昇"
-    "げらく": "下落"
-    "せいふ": "政府"
-    "けいざい": "経済"
+    "すいません": "すみません"
+    "ちょと": "ちょっと"
+    "ちよっと": "ちょっと"
+
   ko_asr_corrections:
     "라이다": "LiDAR"
     "라이더": "LiDAR"
     "지엔에스에스": "GNSS"
     "아이엠유": "IMU"
+    "알오에스": "ROS"
+    "알오에스투": "ROS2"
 
 translation_guard:
   enabled: true
   quote_continuation_enabled: true
-  statistic_pattern_enabled: true
-  survey_pattern_enabled: true
+  statistic_pattern_enabled: false
+  survey_pattern_enabled: false
   preserve_percent: true
 
 output:
   show_partial_asr: true
   show_timing: true
   show_reason: true
-  show_normalized_text: true
+  show_normalized_text: false
