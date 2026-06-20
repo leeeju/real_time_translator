@@ -91,6 +91,9 @@ def build_cli_overrides(args: argparse.Namespace) -> Dict[str, Any]:
     if args.no_translation_guard:
         set_nested("translation_guard", "enabled", False)
 
+    if args.no_llm_refiner:
+        set_nested("llm_refiner", "enabled", False)
+
     return updates
 
 
@@ -138,7 +141,7 @@ def main():
     parser.add_argument("--no-quality-filter", action="store_true")
     parser.add_argument("--no-glossary", action="store_true")
     parser.add_argument("--no-translation-guard", action="store_true")
-
+    parser.add_argument("--no-llm-refiner", action="store_true")
     args = parser.parse_args()
 
     if args.list_devices:

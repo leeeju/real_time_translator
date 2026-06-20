@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 from .audio_capture import AudioCapture, AudioChunk
 from .asr_quality_filter import ASRQualityFilter
 from .glossary import Glossary
+from .llm_refiner import LLMRefiner
 from .nllb_translator import LANG_MAP, NLLBTranslator
 from .sentence_buffer import SentenceBuffer, is_near_duplicate, normalize_asr_text
 from .translation_guard import TranslationGuard
@@ -32,6 +33,10 @@ class RealtimePipeline:
       - Keep latency acceptable for real conversation.
       - Reduce obvious ASR artifacts before translation.
       - Preserve numbers and units where possible.
+      - Use NLLB for draft translation and optional Ollama LLM for Korean-only
+        refinement. The LLM is not used as a direct Japanese -> Korean
+        translator because qwen2.5:7b-instruct can mix Chinese/English on
+        long Japanese input.
       - Later GUI can reuse this pipeline by replacing terminal printing
         with callbacks.
     """
@@ -123,6 +128,9 @@ class RealtimePipeline:
             preserve_percent=bool(guard_cfg.get("preserve_percent", True)),
         )
 
+        llm_cfg = self.raw.get("llm_refiner", {})
+        self.llm_refiner = LLMRefiner.from_config(llm_cfg)
+
         output_cfg = self.raw.get("output", {})
         self.show_timing = bool(output_cfg.get("show_timing", True))
         self.show_reason = bool(output_cfg.get("show_reason", True))
@@ -143,6 +151,7 @@ class RealtimePipeline:
             else "mode            : Korean -> Japanese"
         )
         print(f"sentence buffer : {self.buffer_enabled}")
+        print(f"llm refiner     : {self.llm_refiner.enabled} ({self.llm_refiner.model})")
         print("Stop            : Ctrl+C")
         print()
 
@@ -275,14 +284,46 @@ class RealtimePipeline:
             translate_fn=self._translate_plain_text,
         )
 
+        llm_elapsed = 0.0
+        llm_reason = "disabled"
+
         if guarded.handled:
             translated_text = self._postprocess_translation(source_text, guarded.text)
             trans_elapsed = 0.0
             reason = f"{reason}+{guarded.reason}"
+
+            # TranslationGuard가 처리한 특수 패턴은 기본적으로 LLM 보정을 건너뜁니다.
+            # config에서 refine_after_guard=true로 켜면 Guard 결과도 자연화합니다.
+            if self.llm_refiner.enabled and self.llm_refiner.refine_after_guard:
+                llm_result = self.llm_refiner.refine(
+                    draft_text=translated_text,
+                    direction=self.direction,
+                )
+                llm_elapsed = llm_result.elapsed
+                llm_reason = llm_result.reason
+                if llm_result.used:
+                    translated_text = llm_result.text
+            elif self.llm_refiner.enabled:
+                llm_reason = "skip_guard"
+
         else:
             tr_result = self.translator.translate(source_text, self.direction)
             translated_text = self._postprocess_translation(source_text, tr_result.text)
             trans_elapsed = tr_result.elapsed
+
+            # qwen2.5:7b-instruct는 일본어 직접 번역이 아니라
+            # NLLB 초벌 한국어 번역을 자연스럽게 다듬는 refiner로만 사용합니다.
+            if self.llm_refiner.enabled:
+                llm_result = self.llm_refiner.refine(
+                    draft_text=translated_text,
+                    direction=self.direction,
+                )
+                llm_elapsed = llm_result.elapsed
+                llm_reason = llm_result.reason
+                if llm_result.used:
+                    translated_text = llm_result.text
+
+        translated_text = self._postprocess_translation(source_text, translated_text)
 
         self.last_translated_source = source_text
 
@@ -300,12 +341,13 @@ class RealtimePipeline:
             if self.show_reason:
                 print(
                     f"[reason={reason} | total={total_str} | "
-                    f"asr={asr_str} | trans={trans_elapsed:.2f}s | rms={rms_str}]"
+                    f"asr={asr_str} | nllb={trans_elapsed:.2f}s | "
+                    f"llm={llm_elapsed:.2f}s/{llm_reason} | rms={rms_str}]"
                 )
             else:
                 print(
                     f"[total={total_str} | asr={asr_str} | "
-                    f"trans={trans_elapsed:.2f}s | rms={rms_str}]"
+                    f"nllb={trans_elapsed:.2f}s | llm={llm_elapsed:.2f}s | rms={rms_str}]"
                 )
 
         print(f"{self.src_label}: {source_text}")

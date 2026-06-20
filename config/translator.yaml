@@ -1,21 +1,38 @@
+# Real-time Japanese -> Korean translator configuration
+# Main target: Japanese audio -> Korean subtitle text.
+#
+# Run:
+#   python .\scripts\realtime_audio.py
+
 audio:
   source: loopback
   device_index: null
-  chunk_seconds: 3.2
-  overlap_seconds: 0.8
+
+  # 기존 2.0/0.3보다 문장 연결성이 좋아짐.
+  # 너무 길면 지연 증가, 너무 짧으면 ASR 조각화 증가.
+  chunk_seconds: 2.8
+  overlap_seconds: 0.5
+
+  # 방송/회의 loopback 기준.
+  # 너무 높으면 작은 발화를 놓칠 수 있음.
   rms_threshold: 220.0
 
 language:
   direction: ja2ko
 
 asr:
-  model: large-v3-turbo
+  # small은 속도는 빠르지만 숫자/고유명사 오류가 많았음.
+  # medium은 품질/속도 균형용.
+  model: medium
   device: cuda
   compute_type: int8_float16
+
   beam_size: 1
   vad_filter: true
   condition_on_previous_text: false
   no_speech_threshold: 0.6
+
+  # 긴 initial_prompt는 ASR 결과로 누출될 수 있으므로 null 유지.
   initial_prompt: null
 
 nllb:
@@ -23,35 +40,85 @@ nllb:
   cache_dir: models
   device: cuda
   dtype: fp16
-  max_new_tokens: 96
+
+  max_new_tokens: 64
   num_beams: 1
-  repetition_penalty: 1.10
+  repetition_penalty: 1.18
   no_repeat_ngram_size: 3
-  length_penalty: 1.0
+  length_penalty: 0.95
 
 sentence_buffer:
   enabled: true
-  max_chars: 180
-  max_wait_sec: 4.0
+
+  # 너무 짧게 끊기지 않도록 기존 140보다 약간 증가.
+  max_chars: 160
+  max_wait_sec: 3.0
+
+  # 짧은 회화도 놓치지 않도록 완화.
   min_chars_to_translate: 4
+
   print_partial_asr: true
   suppress_duplicates: true
 
 quality_filter:
   enabled: true
+
+  # 기존 설정은 실제 방송/대화 조각을 너무 쉽게 drop할 수 있어 완화.
   min_text_len: 2
-  min_japanese_ratio: 0.10
+  min_japanese_ratio: 0.15
   max_repeated_char_ratio: 0.65
   max_compression_ratio: 5.0
-  min_avg_logprob: -2.50
-  max_no_speech_prob: 0.98
+  min_avg_logprob: -2.20
+  max_no_speech_prob: 0.95
 
 glossary:
   enabled: true
+
   ja_asr_corrections:
+    # general / conversation
     "すいません": "すみません"
     "ちょと": "ちょっと"
     "ちよっと": "ちょっと"
+
+    # finance / news common
+    "かぶか": "株価"
+    "株か": "株価"
+    "とりひき": "取引"
+    "にっけいへいきん": "日経平均"
+    "にっけい平均": "日経平均"
+    "かわせ": "為替"
+    "きんり": "金利"
+    "じょうしょう": "上昇"
+    "げらく": "下落"
+    "せいふ": "政府"
+    "けいざい": "経済"
+
+    # current egg-price sample corrections
+    # 일반 회화에는 큰 영향이 적은 범위에서만 추가.
+    "J.A.全能卵": "JA全農たまご"
+    "JA全能卵": "JA全農たまご"
+    "全能卵": "JA全農たまご"
+    "天皇卵": "JA全農たまご"
+
+    "m サイズ": "Mサイズ"
+    "mサイズ": "Mサイズ"
+
+    "おろし売り": "卸売り"
+    "おろし売り価格": "卸売価格"
+    "おろし売りかかり": "卸売価格"
+
+    "1キログラム": "1kg"
+    "1キロぐらい": "1kgあたり"
+    "プログラムあたり": "1kgあたり"
+
+    "ご縁でした": "円でした"
+
+    "トリー・インフルエンザ": "鳥インフルエンザ"
+    "トリインフルエンザ": "鳥インフルエンザ"
+    "トリーインフルエンザ": "鳥インフルエンザ"
+
+    "罰処分": "殺処分"
+    "罰処分された": "殺処分された"
 
   ko_asr_corrections:
     "라이다": "LiDAR"
@@ -64,12 +131,59 @@ glossary:
 translation_guard:
   enabled: true
   quote_continuation_enabled: true
-  statistic_pattern_enabled: false
-  survey_pattern_enabled: false
+  statistic_pattern_enabled: true
   preserve_percent: true
+
+llm_refiner:
+  enabled: true
+  provider: ollama
+  model: qwen2.5:3b
+  url: http://127.0.0.1:11434/api/chat
+  mode: ko_refine
+
+  temperature: 0
+  top_p: 0.1
+  num_ctx: 384
+  num_predict: 40
+  timeout_sec: 0.8
+
+  min_chars: 60
+  max_chars: 180
+
+  min_korean_ratio: 0.35
+  max_latin_ratio: 0.25
+  reject_cjk: true
+  fallback_on_fail: true
+  refine_after_guard: false
+
+  stop:
+    - "Japanese:"
+    - "Korean:"
+    - "English:"
+    - "Explanation:"
+    - "Analysis:"
+    - "The translation"
+    - "Let me"
+    - "Based on"
+    - "Hmm,"
+    - "Wait,"
+    - "日本語:"
+    - "韓国語:"
+    - "中国語:"
+    - "中文:"
+    - "설명:"
+    - "분석:"
+    - "원문:"
+    - "번역:"
+    - "不僅"
+    - "不仅"
+    - "而且"
+    - "毫无意义"
+    - "强烈批评"
+    - "伪善"
 
 output:
   show_partial_asr: true
   show_timing: true
   show_reason: true
-  show_normalized_text: false
+  show_normalized_text: true
