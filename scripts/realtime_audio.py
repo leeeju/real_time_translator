@@ -99,7 +99,7 @@ def build_cli_overrides(args: argparse.Namespace) -> Dict[str, Any]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Real-time Japanese/Korean audio translator. Default: Japanese -> Korean."
+        description="Real-time speech translator. Default: Japanese -> Korean."
     )
 
     parser.add_argument(
@@ -120,7 +120,7 @@ def main():
     parser.add_argument("--overlap-seconds", type=float, default=None)
     parser.add_argument("--rms-threshold", type=float, default=None)
 
-    parser.add_argument("--direction", choices=["ja2ko", "ko2ja"], default=None)
+    parser.add_argument("--direction", choices=["ja2ko", "ko2ja", "en2ko", "ko2en"], default=None)
 
     parser.add_argument("--asr-model", default=None)
     parser.add_argument("--asr-device", choices=["cpu", "cuda"], default=None)

@@ -156,10 +156,10 @@ class LLMRefiner:
         if not self.enabled:
             return LLMRefineResult(draft_text, 0.0, False, "disabled")
 
-        if direction != "ja2ko":
+        if direction not in ("ja2ko", "en2ko"):
             return LLMRefineResult(draft_text, 0.0, False, "skip_direction")
 
-        if len(draft_text) < self.min_chars:
+        if len(draft_text) < self.min_chars and not self._should_refine_short_draft(draft_text):
             return LLMRefineResult(draft_text, 0.0, False, "skip_short")
 
         if len(draft_text) > self.max_chars:
@@ -221,30 +221,6 @@ class LLMRefiner:
             {"role": "user", "content": user_prompt},
         ]
 
-        user_prompt = f"""
-아래 한국어 초벌 번역을 자연스럽고 정확한 한국어 문장으로 다듬어라.
-
-출력 규칙:
-- 한국어 문장만 출력
-- 설명 금지
-- 영어 금지
-- 일본어 금지
-- 중국어 금지
-- 의미를 바꾸지 말 것
-- 숫자, 단위, 이름은 보존
-- 어색한 직역체는 자연스러운 통역문으로 수정
-- '허위뿐'처럼 어색한 표현은 문맥상 자연스러우면 '위선적일 뿐'으로 수정
-
-초벌 번역:
-{draft_text}
-
-최종 한국어:
-""".strip()
-
-        return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
 
     def _cleanup_response(self, text: str) -> str:
         text = self._normalize_text(text)
@@ -300,6 +276,19 @@ class LLMRefiner:
             return False, "high_latin_ratio"
 
         return True, "ok"
+
+    @staticmethod
+    def _should_refine_short_draft(text: str) -> bool:
+        awkward_patterns = (
+            "것을 바랍니다",
+            "있는 것을 바랍니다",
+            "하는 것을 바랍니다",
+            "할 것을 바랍니다",
+            "저는 여러분",
+            "저는 당신",
+            "나는 여러분",
+        )
+        return any(pattern in text for pattern in awkward_patterns)
 
     @staticmethod
     def _normalize_text(text: str) -> str:

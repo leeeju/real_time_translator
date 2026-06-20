@@ -145,11 +145,7 @@ class RealtimePipeline:
     def run(self) -> None:
         print("=== Real-time Translator Pipeline ===")
         print(f"direction       : {self.direction}")
-        print(
-            "main mode       : Japanese -> Korean"
-            if self.direction == "ja2ko"
-            else "mode            : Korean -> Japanese"
-        )
+        print(f"mode            : {self.src_label} -> {self.tgt_label}")
         print(f"sentence buffer : {self.buffer_enabled}")
         print(f"llm refiner     : {self.llm_refiner.enabled} ({self.llm_refiner.model})")
         print("Stop            : Ctrl+C")

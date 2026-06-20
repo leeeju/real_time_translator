@@ -33,14 +33,16 @@ class Glossary:
         out = text.strip()
 
         if self.enabled:
-            corrections = self.ja_asr_corrections if direction == "ja2ko" else self.ko_asr_corrections
+            corrections = self._corrections_for_direction(direction)
             for src, dst in corrections.items():
                 out = out.replace(src, dst)
 
         if direction == "ja2ko":
             out = normalize_japanese_for_translation(out)
-        else:
+        elif direction.startswith("ko2"):
             out = normalize_korean_for_translation(out)
+        else:
+            out = normalize_generic_for_translation(out)
 
         return out.strip()
 
@@ -48,6 +50,13 @@ class Glossary:
         text = text.strip()
         text = re.sub(r"\s+", " ", text)
         return text
+
+    def _corrections_for_direction(self, direction: str) -> Mapping[str, str]:
+        if direction.startswith("ja2"):
+            return self.ja_asr_corrections
+        if direction.startswith("ko2"):
+            return self.ko_asr_corrections
+        return {}
 
 
 def normalize_japanese_for_translation(text: str) -> str:
@@ -114,6 +123,13 @@ def normalize_korean_for_translation(text: str) -> str:
     if text and not text.endswith((".", "?", "!", "。", "？", "！")):
         if text.endswith(("요", "다", "니다", "습니다", "했습니다", "하겠습니다", "입니다")):
             text += "."
+    return text.strip()
+
+
+def normalize_generic_for_translation(text: str) -> str:
+    text = _squash_spaces(text)
+    if text and not text.endswith((".", "?", "!", "。", "？", "！")):
+        text += "."
     return text.strip()
 
 

@@ -48,6 +48,53 @@ class TranslationGuard:
             if result.handled:
                 return result
 
+        result = self._try_polite_request(source_text, translate_fn)
+        if result.handled:
+            return result
+
+        return GuardedTranslation(False)
+
+    def _try_polite_request(
+        self,
+        source_text: str,
+        translate_fn: Callable[[str, str], str],
+    ) -> GuardedTranslation:
+        text = source_text.strip()
+        text = text.rstrip("。.!！?")
+
+        patterns = (
+            (
+                r"(.+?)(?:を)?しておいていただきたいと思います$",
+                "{action} 두시기 바랍니다.",
+                "generic_polite_request_keep_ready",
+            ),
+            (
+                r"(.+?)(?:を)?していただきたいと思います$",
+                "{action} 주시기 바랍니다.",
+                "generic_polite_request",
+            ),
+            (
+                r"(.+?)(?:を)?していただければと思います$",
+                "{action} 주시면 좋겠습니다.",
+                "generic_polite_request_soft",
+            ),
+        )
+
+        for pattern, template, reason in patterns:
+            m = re.fullmatch(pattern, text)
+            if not m:
+                continue
+
+            action_ja = m.group(1).strip(" 「」『』、。")
+            if not (1 <= len(action_ja) <= 24):
+                continue
+
+            action_ko = self._translate_action_phrase(action_ja, translate_fn)
+            if not action_ko:
+                continue
+
+            return GuardedTranslation(True, template.format(action=action_ko), reason)
+
         return GuardedTranslation(False)
 
     def _try_statistic_pattern(
@@ -101,6 +148,33 @@ class TranslationGuard:
             option_ko = option_ko.replace(src, dst)
 
         return option_ko
+
+    @staticmethod
+    def _translate_action_phrase(action_ja: str, translate_fn: Callable[[str, str], str]) -> str:
+        action_ko = translate_fn(action_ja, "ja2ko").strip()
+        action_ko = action_ko.rstrip(".。")
+
+        cleanup_patterns = (
+            r"^(?:그|그것|이를|이것을)\s+",
+            r"\s*(?:하는 것|하는 것을|하고 있는 것|하고 있는 것을)$",
+            r"\s*(?:입니다|입니다\.|합니다|합니다\.)$",
+        )
+        for pattern in cleanup_patterns:
+            action_ko = re.sub(pattern, "", action_ko).strip()
+
+        if not action_ko:
+            return ""
+
+        if action_ko.endswith(("하다", "하기")):
+            action_ko = action_ko[:-2]
+
+        if action_ko.endswith("해"):
+            return action_ko
+
+        if action_ko.endswith(("공유", "확인", "준비", "검토", "대응", "정리", "참고", "기록")):
+            return f"{action_ko}해"
+
+        return f"{action_ko} 해"
 
     @staticmethod
     def _report_verb_to_korean(report_verb: str) -> str:

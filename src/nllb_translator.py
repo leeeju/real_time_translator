@@ -26,6 +26,20 @@ LANG_MAP = {
         "src_label": "KO",
         "tgt_label": "JA",
     },
+    "en2ko": {
+        "asr_lang": "en",
+        "nllb_src": "eng_Latn",
+        "nllb_tgt": "kor_Hang",
+        "src_label": "EN",
+        "tgt_label": "KO",
+    },
+    "ko2en": {
+        "asr_lang": "ko",
+        "nllb_src": "kor_Hang",
+        "nllb_tgt": "eng_Latn",
+        "src_label": "KO",
+        "tgt_label": "EN",
+    },
 }
 
 
@@ -43,7 +57,7 @@ class NLLBTranslator:
         device: str = "cuda",
         dtype: str = "fp16",
         max_new_tokens: int = 64,
-        num_beams: int = 2,
+        num_beams: int = 1,
         repetition_penalty: float = 1.18,
         no_repeat_ngram_size: int = 3,
         length_penalty: float = 0.95,

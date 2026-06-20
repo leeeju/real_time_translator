@@ -50,9 +50,10 @@ nllb:
 sentence_buffer:
   enabled: true
 
-  # 너무 짧게 끊기지 않도록 기존 140보다 약간 증가.
-  max_chars: 160
-  max_wait_sec: 3.0
+  # Conversation/meeting profile: keep segments short enough that NLLB does not
+  # translate several fast utterances as one long sentence.
+  max_chars: 90
+  max_wait_sec: 1.5
 
   # 짧은 회화도 놓치지 않도록 완화.
   min_chars_to_translate: 4
@@ -79,6 +80,10 @@ glossary:
     "すいません": "すみません"
     "ちょと": "ちょっと"
     "ちよっと": "ちょっと"
+    "ビニールガサ": "ビニール傘"
+    "長い顔": "長い傘"
+    "長がさ": "長傘"
+    "長磨": "長傘"
 
     # finance / news common
     "かぶか": "株価"
@@ -93,32 +98,6 @@ glossary:
     "せいふ": "政府"
     "けいざい": "経済"
 
-    # current egg-price sample corrections
-    # 일반 회화에는 큰 영향이 적은 범위에서만 추가.
-    "J.A.全能卵": "JA全農たまご"
-    "JA全能卵": "JA全農たまご"
-    "全能卵": "JA全農たまご"
-    "天皇卵": "JA全農たまご"
-
-    "m サイズ": "Mサイズ"
-    "mサイズ": "Mサイズ"
-
-    "おろし売り": "卸売り"
-    "おろし売り価格": "卸売価格"
-    "おろし売りかかり": "卸売価格"
-
-    "1キログラム": "1kg"
-    "1キロぐらい": "1kgあたり"
-    "プログラムあたり": "1kgあたり"
-
-    "ご縁でした": "円でした"
-
-    "トリー・インフルエンザ": "鳥インフルエンザ"
-    "トリインフルエンザ": "鳥インフルエンザ"
-    "トリーインフルエンザ": "鳥インフルエンザ"
-
-    "罰処分": "殺処分"
-    "罰処分された": "殺処分された"
 
   ko_asr_corrections:
     "라이다": "LiDAR"
@@ -127,6 +106,14 @@ glossary:
     "아이엠유": "IMU"
     "알오에스": "ROS"
     "알오에스투": "ROS2"
+
+    "일증": "1층"
+    "일 층": "1층"
+    "일층": "1층"
+    "이 층": "2층"
+    "이층": "2층"
+    "삼 층": "3층"
+    "삼층": "3층"
 
 translation_guard:
   enabled: true
@@ -145,7 +132,7 @@ llm_refiner:
   top_p: 0.1
   num_ctx: 384
   num_predict: 40
-  timeout_sec: 0.8
+  timeout_sec: 2.0
 
   min_chars: 60
   max_chars: 180

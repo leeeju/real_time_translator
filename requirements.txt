@@ -1,0 +1,9 @@
+faster-whisper
+numpy
+pyaudiowpatch
+PyYAML
+requests
+torch
+transformers
+sentencepiece
+protobuf

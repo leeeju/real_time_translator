@@ -117,6 +117,16 @@ class SentenceBuffer:
             if self._is_statistic_answer_without_context(self.buffer):
                 return BufferResult(False, "", "statistic_fragment_timeout")
 
+            if self._ends_with_japanese_continuation(self.buffer) and len(self.buffer) < self.max_chars:
+                return BufferResult(False, "", "continuation_timeout")
+
+        if self.direction.startswith("ko2"):
+            if self._ends_with_korean_continuation(self.buffer) and len(self.buffer) < self.max_chars:
+                return BufferResult(False, "", "continuation_timeout")
+
+        if self._ends_with_trailing_ellipsis(self.buffer) and len(self.buffer) < self.max_chars:
+            return BufferResult(False, "", "ellipsis_timeout")
+
         if elapsed >= self.max_wait_sec and len(self.buffer) >= self.min_chars_to_translate:
             return BufferResult(True, self.flush(), "timeout")
 
@@ -155,6 +165,9 @@ class SentenceBuffer:
     def _is_sentence_complete(self, text: str) -> bool:
         text = normalize_asr_text(text)
 
+        if self._ends_with_trailing_ellipsis(text):
+            return False
+
         if self.direction == "ja2ko":
             if self._ends_with_open_japanese_quote_marker(text):
                 return False
@@ -165,6 +178,12 @@ class SentenceBuffer:
             if text.endswith(("。", "？", "?", "！", "!")):
                 return True
 
+            if re.search(
+                r"(?:です|ます|でした|ました|ですね|ますね|ですよ|ですよね|"
+                r"なんですよね|んですよね|わかります)$",
+                text,
+            ):
+                return True
             endings = (
                 "です", "ます", "ました", "ません", "でした", "だった",
                 "あります", "ありません", "と思います", "してください",
@@ -208,3 +227,31 @@ class SentenceBuffer:
             t,
         ) is not None
         return has_stat and not has_context and len(t) <= 40
+
+    @staticmethod
+    def _ends_with_japanese_continuation(text: str) -> bool:
+        t = normalize_asr_text(text).rstrip("、, ")
+        return bool(re.search(
+            r"(?:と|とか|たり|だったり|たりとか|ので|から|ため|ために|"
+            r"けど|けれど|けれども|ですけど|ですが|ますが|"
+            r"んですけど|なんですけど|んですけれども|なんですけれども|"
+            r"ということ|ということで|ということなので|ということなんで|"
+            r"ということから|ということもあって|わけで|場合は|"
+            r"場合には|場合によっては|ちょっと|あの|えっと)$",
+            t,
+        ))
+
+    @staticmethod
+    def _ends_with_korean_continuation(text: str) -> bool:
+        t = normalize_asr_text(text).rstrip(" ,")
+        return bool(re.search(
+            r"(?:그리고|근데|그런데|그래서|그러니까|아니면|또는|"
+            r"는데|은데|니까|어서|아서|서|지만|고|하고|가지고|때문에|"
+            r"거나|면|다면|라면|인데|인데요|거든요|에|도|가|은|는|을|를)$",
+            t,
+        ))
+
+    @staticmethod
+    def _ends_with_trailing_ellipsis(text: str) -> bool:
+        t = normalize_asr_text(text)
+        return t.endswith(("...", "…", ".."))
